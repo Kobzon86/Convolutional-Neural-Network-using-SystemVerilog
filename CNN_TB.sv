@@ -14,9 +14,12 @@
 // Editor : sublime text4, tab size (4)
 // -----------------------------------------------------------------------------
 
-
+`include "./top/CNN.svh"
 
 `timescale 1ns/1ns
+
+
+`define DATAFLOW_CHECK
 
 module CNN_TB ();
 
@@ -222,7 +225,7 @@ module CNN_TB ();
 
     parameter logic [CONV_NUMB-1:0][ 1:0][7:0] CONV_DIMENSION   = {{8'd8, 8'd4}, {8'd4, 8'd1}};
     parameter logic [CONV_NUMB-1:0][ 3:0]      KERNEL_DIMENSION = {4'd3  , 4'd3}              ;
-    parameter logic [FLAT_NUMB-1:0][15:0]      FLAT_DIMENSION   = {16'd64, 16'd200}           ;
+    parameter logic [FLAT_NUMB :0][15:0]      FLAT_DIMENSION   = {CLASSES_QNT, 16'd64, 16'd200}           ;
 
 
 
@@ -240,6 +243,13 @@ module CNN_TB ();
 
     logic [CLASSES_QNT-1:0][31:0] classes;
 
+    int weights_mem_in_data;
+    int weights_mem_in_addr;
+    int weights_mem_sel_addr;
+
+    logic [CONV_NUMB-1:0]weights_mem_in_kernel_wr=0;
+    logic [FLAT_NUMB-1:0]weights_mem_in_fc_wr = 0;
+
     localparam R2I_COEF = 2**FRACT_WIDTH;
 
     CNN #(
@@ -255,15 +265,20 @@ module CNN_TB ();
         .IMG_WIDTH       (IMG_WIDTH       ),
         .IMG_HEIGHT      (IMG_HEIGHT      )
     ) inst_CNN (
-        .clk    (clk    ),
-        .clk_en (clk_en ),
-        .rst_n  (rst_n  ),
-        .i_data (i_data ),
-        .i_valid(i_valid),
-        .i_sop  (i_sop  ),
-        .i_eop  (i_eop  ),
-        .o_valid(o_valid),
-        .classes(classes)
+        .clk                     (clk                     ),
+        .clk_en                  (clk_en                  ),
+        .rst_n                   (rst_n                   ),
+        .i_data                  (i_data                  ),
+        .i_valid                 (i_valid                 ),
+        .i_sop                   (i_sop                   ),
+        .i_eop                   (i_eop                   ),
+        .o_valid                 (o_valid                 ),
+        .classes                 (classes                 ),
+        .weights_mem_in_data     (weights_mem_in_data     ),
+        .weights_mem_in_addr     (weights_mem_in_addr     ),
+        .weights_mem_sel_addr    (weights_mem_sel_addr    ),
+        .weights_mem_in_kernel_wr(weights_mem_in_kernel_wr),
+        .weights_mem_in_fc_wr    (weights_mem_in_fc_wr    )
     );
 
 
@@ -273,13 +288,100 @@ module CNN_TB ();
         end
     end
 
+
+
+
+
     initial begin
         #100;
 
         rst_n = 1;
 
         #100;
+        /////////////
+        ///WEIGHTS INITIALIZATION 
+        //////////////
+        @(posedge clk);
+        foreach (kernel_1_re[dim2, dim1, row, col]) begin
+            weights_mem_in_data = R2I_COEF*kernel_1_re[dim2][dim1][row][col];
+            weights_mem_in_kernel_wr[0] = 1'b1;
+            @(posedge clk);
+            weights_mem_in_addr++; 
+            weights_mem_in_kernel_wr[0] = 1'b0;
+        end
+        foreach (conv_1_bias_re[x]) begin
+            weights_mem_in_data = R2I_COEF*conv_1_bias_re[x];
+            weights_mem_in_kernel_wr[0] = 1'b1;
+            @(posedge clk);
+            weights_mem_in_addr++; 
+            weights_mem_in_kernel_wr[0] = 1'b0;
+        end
+        weights_mem_in_kernel_wr[0] = 1'b0;
+        weights_mem_in_addr = 0; 
 
+        @(posedge clk);
+
+        foreach (kernel_2_re[dim2, dim1, row, col]) begin
+            weights_mem_in_data = R2I_COEF*kernel_2_re[dim2][dim1][row][col];
+            weights_mem_in_kernel_wr[1] = 1'b1;
+            @(posedge clk);
+            weights_mem_in_addr++; 
+        end
+        foreach (conv_2_bias_re[x]) begin
+            weights_mem_in_data = R2I_COEF*conv_2_bias_re[x];
+            weights_mem_in_kernel_wr[1] = 1'b1;
+            @(posedge clk);
+            weights_mem_in_addr++; 
+            weights_mem_in_kernel_wr[1] = 1'b0;
+        end
+        weights_mem_in_kernel_wr[1] = 1'b0;
+        weights_mem_in_addr = 0; 
+
+
+        foreach (fc1_weights_re[x,y]) begin
+            weights_mem_in_data = R2I_COEF*fc1_weights_re[x][y];
+            weights_mem_sel_addr = x;
+
+            weights_mem_in_addr = y;
+            weights_mem_in_fc_wr[0] = 1'b1;
+            @(posedge clk);
+            weights_mem_in_fc_wr[0] = 1'b0;
+        end
+        foreach (fc1_bias_re[x]) begin
+            weights_mem_in_data = R2I_COEF*fc1_bias_re[x];
+            weights_mem_sel_addr = FLAT_DIMENSION[1];
+
+            weights_mem_in_addr = x;
+            weights_mem_in_fc_wr[0] = 1'b1;
+            @(posedge clk);
+            weights_mem_in_fc_wr[0] = 1'b0;
+        end
+
+        foreach (fc2_weights_re[x,y]) begin
+            weights_mem_in_data = R2I_COEF*fc2_weights_re[x][y];
+            weights_mem_sel_addr = x;
+
+        weights_mem_in_addr = y; 
+        weights_mem_in_fc_wr[1] = 1'b1;
+        @(posedge clk);
+        weights_mem_in_fc_wr[1] = 1'b0;
+        end
+        foreach (fc2_bias_re[x]) begin
+            weights_mem_in_data = R2I_COEF*fc2_bias_re[x];
+            weights_mem_sel_addr = CLASSES_QNT;
+
+            weights_mem_in_addr = x;
+            weights_mem_in_fc_wr[1] = 1'b1;
+            @(posedge clk);
+            weights_mem_in_fc_wr[1] = 1'b0;
+        end
+/////////////////////////////////////////////////////////
+
+
+
+
+///////////////////////////////////////////////
+/////////////////////
         foreach (image_0[row,col]) begin
             @(posedge clk);
             i_data = (image_7[row][col]/255) * R2I_COEF;
@@ -343,7 +445,10 @@ module CNN_TB ();
     end
 
 
-
+/////////////////////////////////////////////
+//////DATAFLOW CHECK
+/////////////////////////////////////////////
+`ifdef DATAFLOW_CHECK
     int first_conv_rows_cntr = 0;
     int first_conv_cols_cntr = 0;
     int first_pool_rows_cntr = 0;
@@ -365,7 +470,7 @@ module CNN_TB ();
     real second_pool_data[CONV_DIMENSION[1][1]][((IMG_HEIGHT-2)/2-2)/2][((IMG_WIDTH-2)/2-2)/2];
 
     real flat_data [CONV_DIMENSION[1][1]*(((IMG_HEIGHT-2)/2-2)/2)*(((IMG_HEIGHT-2)/2-2)/2)];
-
+`endif
 
     int first_fc_cntr  = 0;
     int second_fc_cntr = 0;
@@ -374,14 +479,14 @@ module CNN_TB ();
     real first_fc_data[FLAT_DIMENSION[1]];
     real second_fc_data[CLASSES_QNT];
 
-
+`ifdef DATAFLOW_CHECK
     initial begin
         forever
             @(posedge clk)
                 if(inst_CNN.conv_valid[0])begin
                     foreach (first_conv_data[i]) begin
-                        first_conv_data[i][first_conv_rows_cntr][first_conv_cols_cntr] <= $itor($signed(inst_CNN.first_conv_data[i]))/R2I_COEF;
-                        first_relu_data[i][first_conv_rows_cntr][first_conv_cols_cntr] <= $itor(inst_CNN.first_relu_data[i])/R2I_COEF;
+                        first_conv_data[i][first_conv_rows_cntr][first_conv_cols_cntr] <= $itor($signed(inst_CNN.conv_data[0][i]))/R2I_COEF;
+                        first_relu_data[i][first_conv_rows_cntr][first_conv_cols_cntr] <= $itor(inst_CNN.relu_data[0][i])/R2I_COEF;
                     end
                     first_conv_cols_cntr++;
                     if(first_conv_cols_cntr == IMG_WIDTH-2)begin
@@ -400,7 +505,7 @@ module CNN_TB ();
             @(posedge clk)
                 if(inst_CNN.pool_valid[0])begin
                     foreach (first_pool_data[i]) begin
-                        first_pool_data[i][first_pool_rows_cntr][first_pool_cols_cntr] <= $itor(inst_CNN.first_pool_data[i])/R2I_COEF;
+                        first_pool_data[i][first_pool_rows_cntr][first_pool_cols_cntr] <= $itor(inst_CNN.pool_data[0][i])/R2I_COEF;
                     end
                     first_pool_cols_cntr++;
                     if(first_pool_cols_cntr == (IMG_HEIGHT-2)/2)begin
@@ -419,8 +524,8 @@ module CNN_TB ();
             @(posedge clk)
                 if(inst_CNN.conv_valid[1])begin
                     foreach (second_conv_data[i]) begin
-                        second_conv_data[i][second_conv_rows_cntr][second_conv_cols_cntr] <= $itor($signed(inst_CNN.second_conv_data[i]))/R2I_COEF;
-                        second_relu_data[i][second_conv_rows_cntr][second_conv_cols_cntr] <= $itor(inst_CNN.second_relu_data[i])/R2I_COEF;
+                        second_conv_data[i][second_conv_rows_cntr][second_conv_cols_cntr] <= $itor($signed(inst_CNN.conv_data[0][i]))/R2I_COEF;
+                        second_relu_data[i][second_conv_rows_cntr][second_conv_cols_cntr] <= $itor(inst_CNN.relu_data[0][i])/R2I_COEF;
                     end
                     second_conv_cols_cntr++;
                     if(second_conv_cols_cntr == (IMG_HEIGHT-2)/2-2)begin
@@ -439,7 +544,7 @@ module CNN_TB ();
             @(posedge clk)
                 if(inst_CNN.pool_valid[1])begin
                     foreach (second_conv_data[i]) begin
-                        second_pool_data[i][second_pool_rows_cntr][second_pool_cols_cntr] <= $itor(inst_CNN.second_pool_data[i])/R2I_COEF;
+                        second_pool_data[i][second_pool_rows_cntr][second_pool_cols_cntr] <= $itor(inst_CNN.pool_data[0][i])/R2I_COEF;
                     end
                     second_pool_cols_cntr++;
                     if(second_pool_cols_cntr == ((IMG_HEIGHT-2)/2-2)/2)begin
@@ -466,11 +571,12 @@ module CNN_TB ();
                 end
     end
 
+
     initial begin
         forever
             @(posedge clk)
                 if(inst_CNN.fc_valid[0])begin
-                    first_fc_data[first_fc_cntr] <= $itor($signed(inst_CNN.first_fc_relu_data))/R2I_COEF;
+                    first_fc_data[first_fc_cntr] <= $itor($signed(inst_CNN.fc_relu_data[0]))/R2I_COEF;
                     first_fc_cntr++;
 
                     if(inst_CNN.fc_eop[0])begin
@@ -479,7 +585,7 @@ module CNN_TB ();
                 end
     end
 
-
+`endif
     initial begin
         forever
             @(posedge clk)
@@ -494,6 +600,14 @@ module CNN_TB ();
     end
 
 
+
+
+
+
+///////////////////////////////////////////
+/////////// CNN RESULTS CHECK
+///////////////////////////////////////////
+ 
     typedef enum {
         ZERO  = 0,
         ONE   = 1,

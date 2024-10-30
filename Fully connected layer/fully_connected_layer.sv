@@ -20,41 +20,42 @@ module fully_connected_layer #(
     parameter IN_DIMENSION       = 200,
     parameter OUT_DIMENSION      = 64
 ) (
-    input                                             clk    , // Clock
-    input                                             clk_en , // Clock Enable
-    input                                             rst_n  , // Asynchronous reset active low
+    input                                             clk                 , // Clock
+    input                                             clk_en              , // Clock Enable
+    input                                             rst_n               , // Asynchronous reset active low
     //input pixels
-    input        [                     PIX_WIDTH-1:0] i_data ,
-    input                                             i_valid,
-    input                                             i_sop  ,
-    input                                             i_eop  ,
+    input        [                     PIX_WIDTH-1:0] i_data              ,
+    input                                             i_valid             ,
+    input                                             i_sop               ,
+    input                                             i_eop               ,
     // output pixels
-    output logic [PIX_WIDTH+$clog2(IN_DIMENSION)-1:0] o_data ,
-    output logic                                      o_valid,
-    output logic                                      o_sop  ,
-    output logic                                      o_eop  ,
+    output logic [PIX_WIDTH+$clog2(IN_DIMENSION)-1:0] o_data              ,
+    output logic                                      o_valid             ,
+    output logic                                      o_sop               ,
+    output logic                                      o_eop               ,
+    ///
+    input  int                                        weights_mem_in_data ,
+    input  int                                        weights_mem_in_addr ,
+    input  int                                        weights_mem_sel_addr,
+    input                                             weights_mem_in_fc_wr,
     ///
     output logic                                      o_ready
 );
-
-
-`include "../top/CNN.svh"
-
 
 logic [WEIGHT_WIDTH-1:0]weights[OUT_DIMENSION][IN_DIMENSION];
 logic [WEIGHT_WIDTH-1:0]bias[OUT_DIMENSION];
 
 
-initial begin
-    foreach (weights[x,y]) begin
-        weights[x][y] = (2**WEIGHT_FRACT_WIDTH)*((OUT_DIMENSION!=10) ? fc1_weights_re[x][y] : fc2_weights_re[x][y]);       
-    end
+always_ff @(posedge clk) begin
+    if(weights_mem_in_fc_wr)
+        if(weights_mem_sel_addr == OUT_DIMENSION)
+            bias[weights_mem_in_addr] <= weights_mem_in_data;
+        else
+            weights[weights_mem_sel_addr][weights_mem_in_addr] <= weights_mem_in_data;
 
-    foreach (bias[x]) begin
-        bias[x] = (2**WEIGHT_FRACT_WIDTH)*((OUT_DIMENSION!=10) ? fc1_bias_re[x] : fc2_bias_re[x]) ;        
+    if(~rst_n) begin
     end
 end
-
 
 int col_cntr;
 
