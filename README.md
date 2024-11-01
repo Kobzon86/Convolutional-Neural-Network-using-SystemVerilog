@@ -18,6 +18,9 @@ In testbench I used this CNN structure:
         fc1 = nn.Linear(200, 64)
         fc2 = nn.Linear(64, 10)
 
+![image](https://github.com/user-attachments/assets/13c7ffff-05bd-4ebd-9d6c-612513aa67b7)
+
+
 
 Simulation Results: 
 ![image](https://github.com/user-attachments/assets/6dc68ca5-9127-4118-94c8-77288268b2d6)
